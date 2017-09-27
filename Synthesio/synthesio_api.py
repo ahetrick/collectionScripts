@@ -10,6 +10,7 @@ import requests
 import csv
 from collections import OrderedDict
 import nltk
+import re
 
 #parameters & variables
 url_start = 'https://rest.synthesio.com/'
@@ -80,7 +81,7 @@ def get_research_report_id(all_dashboards):
     else:
         print('Oops! This isn\'t the Research dashboard.')
         
-def format_query(raw_query):
+'''def format_query(raw_query):
     get_tokens = nltk.word_tokenize(raw_query)
     if len(get_tokens) == 1:
         single_word = ' '.join(get_tokens)
@@ -93,7 +94,39 @@ def format_query(raw_query):
             format_tokens.insert(2*place+1, word)
         make_string = ' '.join(format_tokens)
         make_string_upper = make_string.replace('and', 'AND')
-        return make_string_upper
+        return make_string_upper'''
+
+
+
+def format_query(raw_query):
+    
+    regex = re.compile('and|or|not',re.IGNORECASE)
+    keywords = regex.split(raw_query)
+    boolean = regex.findall(raw_query)
+    
+    # strip trailing white space before or after a word or phrase
+    new_keywords = []
+    for k in keywords:
+        new_keywords.append(" ".join(k.split()))
+        
+    # check if the query is legal. e.g "and A or B", "and and A or B", "A or B not" are not legal 
+    if '' in new_keywords:
+        print('illegal query! Please double check!')
+        # exit()
+    
+    else:
+        
+        new_query_string = ""
+        for i in range(len(new_keywords)):
+            if i == len(new_keywords)-1:
+                new_query_string += "\"" + new_keywords[i] + "\" "
+            else:
+                new_query_string += "\"" + new_keywords[i]  + "\" " + boolean[i].upper() + " "
+                
+        return new_query_string
+
+
+    
         
 def get_mentions_query_single(words, research_report_id, size, access_token):
     formatted_query = format_query(words)
