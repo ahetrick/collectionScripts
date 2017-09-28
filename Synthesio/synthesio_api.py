@@ -61,7 +61,8 @@ def get_requests_no_data(url_end, access_token):
 
 def get_token(input_username, input_password):
     payload = {'grant_type': 'password', 'username': input_username, 'password': input_password, 
-               'client_id': '', 'client_secret': '',  #need client_id & client_secret
+               'client_id': '',
+               'client_secret': '',  #need client_id & client_secret
                'scope': 'read'}
     json_token = post_requests_data('security/v1/oauth/token/', headers_xform, payload)
     token = json_token['access_token']
@@ -74,55 +75,69 @@ def get_dashboards(access_token):
     return dashboards
 
 def get_research_report_id(all_dashboards):
-    get_research_dashboard = [item for item in all_dashboards if item == ''] #need item id
+    get_research_dashboard = [item for item in all_dashboards if item == '254048'] #need item id
     if get_research_dashboard:
-        research_report_id = '' #need research_report_id
+        research_report_id = '264950' #need research_report_id
         return research_report_id
     else:
         print('Oops! This isn\'t the Research dashboard.')
         
-'''def format_query(raw_query):
-    get_tokens = nltk.word_tokenize(raw_query)
-    if len(get_tokens) == 1:
-        single_word = ' '.join(get_tokens)
-        return single_word
-    else:
-        get_booleans = [word for word in get_tokens if word == 'and']
-        format_tokens = ['"{0}"'.format(word) for word in get_tokens if word != get_tokens[0] and word != 'and']
-        format_tokens.insert(0, get_tokens[0])
-        for place, word in enumerate(get_booleans):
-            format_tokens.insert(2*place+1, word)
-        make_string = ' '.join(format_tokens)
-        make_string_upper = make_string.replace('and', 'AND')
-        return make_string_upper'''
-
-
 
 def format_query(raw_query):
     
-    regex = re.compile('and|or|not',re.IGNORECASE)
+    # seperate exact on “and” and "not"
+    regex = re.compile(r'\band\b|\bnot\b',re.IGNORECASE)
     keywords = regex.split(raw_query)
     boolean = regex.findall(raw_query)
     
-    # strip trailing white space before or after a word or phrase
     new_keywords = []
+    
+    # check if there's or in new keywords
     for k in keywords:
-        new_keywords.append(" ".join(k.split()))
+        or_regex = re.compile(r'\bor\b',re.IGNORECASE)
+        or_keywords = or_regex.split(k)
+        or_boolean = or_regex.findall(k)
         
-    # check if the query is legal. e.g "and A or B", "and and A or B", "A or B not" are not legal 
-    if '' in new_keywords:
+        or_new_keywords = []
+        for kk in or_keywords:
+            or_new_keywords.append(" ".join(kk.split()))
+    
+        # if there's "or" boolean exist
+        # construct "or" boolean first
+        if or_boolean != []:
+            if '' in or_new_keywords:
+                print('illegal query! Please double check!')
+                return None
+            else:
+                sub_query_string = ""
+                for i in range(len(or_new_keywords)):
+                    if i== 0:
+                        sub_query_string += "(\"" + or_new_keywords[i] + "\" " + or_boolean[i].upper() + " "
+                    elif i== len(or_new_keywords)-1:
+                        sub_query_string += "\"" + or_new_keywords[i] + "\")"
+                    else:
+                        sub_query_string += "\"" + or_new_keywords[i]  + "\" " + or_boolean[i].upper() + " "
+
+            new_keywords.append(sub_query_string)
+        
+        # if "or" boolean not exist
+        # just strip the trailing spaces and wrap them into " "
+        else:
+            new_keywords.append("\"" +  " ".join(k.split()) + "\"")
+                 
+    if '\"\"' in new_keywords:
         print('illegal query! Please double check!')
-        # exit()
+        return None
     
     else:
         
         new_query_string = ""
         for i in range(len(new_keywords)):
             if i == len(new_keywords)-1:
-                new_query_string += "\"" + new_keywords[i] + "\" "
+                new_query_string += new_keywords[i] 
             else:
-                new_query_string += "\"" + new_keywords[i]  + "\" " + boolean[i].upper() + " "
-                
+                new_query_string += new_keywords[i]  + " " + boolean[i].upper() + " "
+        
         return new_query_string
 
 
@@ -131,7 +146,7 @@ def format_query(raw_query):
 def get_mentions_query_single(words, research_report_id, size, access_token):
     formatted_query = format_query(words)
     payload = {'filters': {'query': formatted_query}}
-    mentions_query_single = post_requests_data_json('mention/v2/reports/' + research_report_id + '/_search?size=' + size, headers_json, payload, access_token)
+    mentions_query_single = post_requests_data_json('mention/v2/reports/' + research_report_id + '/_search?size=' + size + '&sort=desc', headers_json, payload, access_token)
     mentions_query_single_data = mentions_query_single['data']
     return mentions_query_single_data
 
@@ -156,25 +171,39 @@ def get_values(keys_values):
 def print_file(title, content):
     csv_title = title
     csv_content = content
-    with open(title + '.csv', 'w') as makecsvfile:
+    with open(title + '.csv', 'w',newline="") as makecsvfile:
         labels = [key for key in ordered_master_dict.keys()]
         data = csv.writer(makecsvfile, delimiter=',',
                           quotechar='|', quoting=csv.QUOTE_MINIMAL)
         data.writerow(labels)
-        [data.writerow(row) for row in get_values(csv_content)]
+        for row in get_values(csv_content):
+            try:
+                [data.writerow(row) ]
+            except:
+                print('encoding error ignored!')
 
-def main():
+if __name__ == '__main__':
+
     username = input('What is your username? ')
+    print('\n')
     password = input('What is your password? ')
+    print('\n')
     access_token = get_token(username, password)
-    all_dashboard_ids = get_dashboards(access_token)
-    research_report_id = get_research_report_id(all_dashboard_ids)
-    query_by_word = input('What word(s) would you like to search for? Example: Illinois and wifi ')
-    query_size = input('How many results would you like? Please supply a number: ')
-    single_query = get_mentions_query_single(query_by_word, research_report_id, str(query_size), access_token)
-    normalize(single_query)
-    print_file('query_result', single_query)
-    print('Your results have downloaded successfully.')
+    research_report_id = get_research_report_id(get_dashboards(access_token))
 
-#main call
-main()
+    while True:
+        query_by_word = input('What word(s) would you like to search for?\nAND, OR, NOT boolean are available.\ne.g.Illinois or Indiana and wifi and internet not computer\n')
+        print('\n')
+        query_size = input('How many results would you like? Please supply a number: ')
+        print('\n')
+        if format_query(query_by_word) != None:
+            confirm = input('Does this look right to you: ' + format_query(query_by_word) + '\nreply Y/N: ')
+            print('\n')
+            if confirm == 'Y' or confirm == 'y':
+                single_query = get_mentions_query_single(query_by_word, research_report_id, str(query_size), access_token)
+                normalize(single_query)
+                title = input('Please input the filename you\'d like to save (.csv): ')
+                print('\n')
+                print_file(title, single_query)
+                print('Your results have downloaded successfully.')
+                break
